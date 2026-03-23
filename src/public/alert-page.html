@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Emergency Alert</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      margin: 0;
+      background: #f5f5f5;
+      color: #1a1a1a;
+      min-height: 100vh;
+      padding: 16px;
+    }
+    .card {
+      max-width: 420px;
+      margin: 24px auto;
+      background: #fff;
+      border-radius: 18px;
+      padding: 20px;
+      box-shadow: 0 4px 24px rgba(0,0,0,.08);
+    }
+    h1 { font-size: 1.25rem; margin: 0 0 8px; color: #e60000; }
+    p.sub { margin: 0 0 16px; color: #666; font-size: 0.9rem; }
+    label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 0.85rem; }
+    input {
+      width: 100%;
+      padding: 12px 14px;
+      border: none;
+      background: #f0f0f0;
+      border-radius: 12px;
+      font-size: 1rem;
+      margin-bottom: 12px;
+    }
+    button {
+      width: 100%;
+      padding: 14px;
+      background: #e60000;
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .err { color: #c00; font-size: 0.9rem; margin-bottom: 8px; }
+    .owner { margin: 16px 0; padding: 12px; background: #fafafa; border-radius: 12px; }
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid #eee;
+    }
+    .row:last-child { border-bottom: none; }
+    .call {
+      padding: 8px 14px;
+      background: #fff;
+      border: 2px solid #e60000;
+      color: #e60000;
+      border-radius: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      width: auto;
+    }
+    .caller-wrap { margin-top: 16px; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="card" id="step-verify">
+    <h1>Verify vehicle</h1>
+    <p class="sub">Enter the vehicle number shown on this QR to view masked emergency contacts.</p>
+    <div class="err hidden" id="verify-err"></div>
+    <label for="vehicle">Vehicle number</label>
+    <input id="vehicle" placeholder="e.g. MH12AB1234" autocomplete="off" />
+    <label for="caller">Your mobile number (for callback)</label>
+    <input id="caller" placeholder="10-digit mobile" inputmode="numeric" />
+    <button type="button" id="btn-verify">Continue</button>
+  </div>
+
+  <div class="card hidden" id="step-result">
+    <h1>Emergency contacts</h1>
+    <p class="sub">Masked details. Tap Call to connect via secure bridge (demo).</p>
+    <div class="owner">
+      <strong>Owner</strong>
+      <div id="owner-line"></div>
+    </div>
+    <div id="family-list"></div>
+  </div>
+
+  <script>
+    const UNIQUE_ID = "__UNIQUE_ID__";
+    const base = window.location.origin;
+
+    function showErr(el, msg) {
+      el.textContent = msg || "";
+      el.classList.toggle("hidden", !msg);
+    }
+
+    document.getElementById("btn-verify").onclick = async () => {
+      const vehicle = document.getElementById("vehicle").value.trim();
+      const caller = document.getElementById("caller").value.trim().replace(/\D/g, "");
+      const errEl = document.getElementById("verify-err");
+      showErr(errEl, "");
+      if (vehicle.length < 4) {
+        showErr(errEl, "Enter vehicle number");
+        return;
+      }
+      if (caller.length < 10) {
+        showErr(errEl, "Enter your 10-digit mobile for call masking");
+        return;
+      }
+      const btn = document.getElementById("btn-verify");
+      btn.disabled = true;
+      try {
+        const res = await fetch(base + "/alert/" + encodeURIComponent(UNIQUE_ID) + "/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ vehicle_number: vehicle }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          showErr(errEl, data.error || "Verification failed");
+          btn.disabled = false;
+          return;
+        }
+        window.__verifiedVehicle = vehicle;
+        window.__caller = caller;
+        document.getElementById("step-verify").classList.add("hidden");
+        document.getElementById("step-result").classList.remove("hidden");
+        document.getElementById("owner-line").innerHTML =
+          "<div>Name: " + data.owner.nameMasked + "</div>" +
+          "<div>Mobile: " + data.owner.mobileMasked + "</div>" +
+          '<div style="margin-top:8px"><button type="button" class="call" data-target="owner">Call owner</button></div>';
+
+        const fam = document.getElementById("family-list");
+        fam.innerHTML = "<strong>Family</strong>";
+        (data.family || []).forEach((f) => {
+          const div = document.createElement("div");
+          div.className = "row";
+          div.innerHTML =
+            "<span>" + f.relation + " — " + f.phoneMasked + "</span>" +
+            '<button type="button" class="call" data-target="family" data-id="' + f.id + '">Call</button>';
+          fam.appendChild(div);
+        });
+
+        fam.querySelectorAll(".call").forEach((b) => b.addEventListener("click", onCall));
+        document.querySelector("#owner-line .call")?.addEventListener("click", onCall);
+      } catch (e) {
+        showErr(errEl, "Network error");
+      }
+      btn.disabled = false;
+    };
+
+    async function onCall(ev) {
+      const btn = ev.currentTarget;
+      const target = btn.getAttribute("data-target");
+      const familyId = btn.getAttribute("data-id");
+      btn.disabled = true;
+      try {
+        const body = {
+          uniqueId: UNIQUE_ID,
+          vehicle_number: window.__verifiedVehicle,
+          caller_number: window.__caller,
+          target,
+        };
+        if (target === "family") body.family_detail_id = parseInt(familyId, 10);
+        const res = await fetch(base + "/alert/call", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        alert(data.message || data.error || (res.ok ? "OK" : "Failed"));
+      } catch {
+        alert("Network error");
+      }
+      btn.disabled = false;
+    }
+  </script>
+</body>
+</html>
