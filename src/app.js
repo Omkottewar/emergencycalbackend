@@ -5,6 +5,8 @@ import profileRoutes from './routes/profile.routes.js';
 import qrRoutes from './routes/qr.routes.js';
 import paymentRoutes from './routes/payment.routes.js';
 import alertRoutes from './routes/alert.routes.js';
+import callRoutes from "./routes/callRoutes.js";
+
 
 const app = express();
 
@@ -17,6 +19,7 @@ app.use('/auth', authRoutes);
 app.use('/profile', profileRoutes);
 app.use('/qr', qrRoutes);
 app.use('/payments', paymentRoutes);
+app.use("/call", callRoutes);
 
 /** Alert web + APIs — GET page, POST verify, POST call */
 app.use('/alert', alertRoutes);

@@ -71,7 +71,6 @@ export function validateFamilyRelation(relation) {
 //   }
 // }
 
-
 export async function createQrRecord({
   userId,
   razorpay_order_id,
@@ -84,7 +83,9 @@ export async function createQrRecord({
   blood_group,
   family,
 }) {
-  // ✅ BYPASS IN DEV MODE
+  console.log("🚀 createQrRecord called");
+
+  // 🔐 1. Payment verification (skip in dev)
   if (process.env.NODE_ENV !== 'development') {
     if (!verifyPaymentSignature(
       razorpay_order_id,
@@ -95,11 +96,116 @@ export async function createQrRecord({
       err.statusCode = 400;
       throw err;
     }
+  } else {
+    console.log("⚠️ DEV MODE: Skipping payment verification");
   }
 
-  // rest of your code...
-}
+  // 🧾 2. Validate required fields
+  if (!name || !mobile || !email || !vehicle_number) {
+    throw new Error("Missing required fields");
+  }
 
+  if (!family || !Array.isArray(family) || family.length < 1 || family.length > 5) {
+    throw new Error("Family must include 1 to 5 contacts");
+  }
+
+  for (const f of family) {
+    if (!f || !f.name || !f.phone || !f.relation) {
+      throw new Error("Invalid family member data");
+    }
+
+    if (!validateFamilyRelation(f.relation)) {
+      throw new Error(`Invalid relation: ${f.relation}`);
+    }
+  }
+
+  // 🧠 3. Normalize data
+  const uniqueId = randomUUID();
+  const vehicleNorm = String(vehicle_number).trim().toUpperCase();
+  const nameNorm = name.trim();
+  const mobileNorm = String(mobile).replace(/\s/g, '');
+  const emailNorm = email.trim();
+
+  console.log("📦 Data prepared:", {
+    uniqueId,
+    nameNorm,
+    mobileNorm,
+    emailNorm,
+    vehicleNorm,
+  });
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    // 🧾 4. Insert QR record
+    const qrRes = await client.query(
+      `INSERT INTO qrdata 
+        (user_id, unique_id, name, mobile, email, vehicle_number, blood_group)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [
+        userId || null, // allow null in dev
+        uniqueId,
+        nameNorm,
+        mobileNorm,
+        emailNorm,
+        vehicleNorm,
+        blood_group || null,
+      ]
+    );
+
+    console.log("🧾 QR INSERT RESULT:", qrRes.rows);
+
+    const qr = qrRes.rows[0];
+
+    if (!qr) {
+      throw new Error("QR insert failed - no data returned");
+    }
+
+    // 👨‍👩‍👧 5. Insert family members
+    for (const f of family) {
+      console.log("📥 Inserting family:", f);
+
+      await client.query(
+        `INSERT INTO family_details 
+          (qr_id, name, phone, relation)
+         VALUES ($1, $2, $3, $4)`,
+        [
+          qr.id,
+          f.name.trim(),
+          String(f.phone).replace(/\s/g, ''),
+          f.relation,
+        ]
+      );
+    }
+
+    await client.query('COMMIT');
+
+    console.log("✅ QR + Family inserted successfully");
+
+    // 🔗 6. Generate alert URL
+    const alertUrl = `${config.publicAppUrl}/alert/${uniqueId}`;
+
+    return {
+      id: qr.id,
+      unique_id: qr.unique_id,
+      name: qr.name,
+      mobile: qr.mobile,
+      vehicle_number: qr.vehicle_number,
+      blood_group: qr.blood_group,
+      alert_url: alertUrl,
+    };
+
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error("❌ DB ERROR:", err);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
 export async function listHistoryForUser(userId) {
   const res = await pool.query(
     `SELECT q.id, q.unique_id, q.name, q.mobile, q.email, q.vehicle_number, q.blood_group, q.created_at,

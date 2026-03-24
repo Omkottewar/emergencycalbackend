@@ -12,9 +12,10 @@ export const config = {
   publicAppUrl: (process.env.PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/$/, ''),
   exotel: {
     sid: process.env.EXOTEL_SID,
-    token: process.env.EXOTEL_TOKEN,
+    apiKey: process.env.EXOTEL_API_KEY,
+    apiToken: process.env.EXOTEL_API_TOKEN,
     callerId: process.env.EXOTEL_CALLER_ID,
-  },
+  }
 };
 
 export function assertConfig() {
