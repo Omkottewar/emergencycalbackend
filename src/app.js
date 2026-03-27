@@ -12,7 +12,8 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
-
+console.log("ENV KEYS:", Object.keys(process.env));
+console.log("DB URL RAW:", process.env.DATABASE_URL);
 app.get('/health', (req, res) => res.json({ ok: true }));
 
 app.use('/auth', authRoutes);
