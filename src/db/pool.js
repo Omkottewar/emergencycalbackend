@@ -12,3 +12,6 @@ ssl: {
   require: true,
 },
 });
+pool.connect()
+  .then(() => console.log("✅ DB CONNECTED"))
+  .catch((err) => console.error("❌ DB CONNECTION ERROR:", err));
