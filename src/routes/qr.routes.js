@@ -33,7 +33,7 @@ router.post(
       return res.status(201).json({
         id: row.id,
         unique_id: row.unique_id,
-        alert_url: row.alertUrl,
+        alert_url: row.alert_url,
         vehicle_number: row.vehicle_number,
         created_at: row.created_at,
       });
