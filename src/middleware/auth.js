@@ -1,21 +1,24 @@
-import jwt from 'jsonwebtoken';
-import { config } from '../config/index.js';
+import jwt from "jsonwebtoken";
+import { config } from "../config/index.js";
 
 export function requireAuth(req, res, next) {
   const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Missing or invalid Authorization header' });
+
+  if (!header || !header.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Missing token" });
   }
-  const token = header.slice(7);
+
+  const token = header.split(" ")[1];
+
   try {
-    const payload = jwt.verify(token, config.jwtSecret);
-    const id = parseInt(String(payload.sub), 10);
-    if (!Number.isFinite(id)) {
-      return res.status(401).json({ error: 'Invalid token subject' });
-    }
-    req.userId = id;
+    const decoded = jwt.verify(token, config.jwtSecret, {
+      issuer: "emergency-qr-api",
+      audience: "mobile-app"
+    });
+
+    req.userId = decoded.sub;
     next();
-  } catch {
-    return res.status(401).json({ error: 'Invalid or expired token' });
+  } catch (e) {
+    return res.status(401).json({ error: "Invalid token" });
   }
 }
