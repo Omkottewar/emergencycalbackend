@@ -3,7 +3,7 @@ dns.setDefaultResultOrder('ipv4first');
 
 import dotenv from 'dotenv';
 dotenv.config();
-
+import cors from "cors";
 import app from './src/app.js';
 import { assertConfig, config } from './src/config/index.js';
 import rateLimit from "express-rate-limit";
@@ -20,7 +20,11 @@ app.use("/call/initiate", callLimiter);
 console.log("DB URL:", process.env.DATABASE_URL);
 app.get('/', (req, res) => {
   res.send('API is running 🚀');
+
 });
+
+
+app.use(cors());
 app.listen(config.port, () => {
   console.log(`Emergency Alert API listening on http://localhost:${config.port}`);
 });
